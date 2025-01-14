@@ -52,12 +52,6 @@ const handleEndedEvent = async (data: z.infer<typeof CallEndedEventSchema>) => {
     callStartedEvent.started_at,
   );
 
-  console.log({
-    ended: callEndedEvent.ended_at,
-    started: callStartedEvent.started_at,
-    duration,
-  });
-
   await prisma.call.update({
     where: { id: data.call_id },
     data: { duration },

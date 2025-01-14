@@ -1,99 +1,62 @@
 import http from "http";
 import parse from "co-body";
-import z from "zod";
-import pgClient from "./db";
-
-const CallStartedEventSchema = z.object({
-  call_id: z.string(),
-  from: z.string(),
-  to: z.string(),
-  started: z.string(),
-});
-
-const CallEndedEventSchema = z.object({
-  call_id: z.string(),
-  from: z.string(),
-  to: z.string(),
-  ended: z.string(),
-});
-
-const CallEventSchema = z.union([CallStartedEventSchema, CallEndedEventSchema]);
-
-type CallEvent = z.infer<typeof CallEventSchema>;
-type CallStartedEvent = z.infer<typeof CallStartedEventSchema>;
-type CallEndedEvent = z.infer<typeof CallEndedEventSchema>;
-
-const logger = {
-  error: (err: any) => console.error(err),
-};
-
-const isCallStartedEvent = (
-  data: z.infer<typeof CallEventSchema>,
-): data is CallStartedEvent => {
-  return true;
-};
-
-const isCallEndedEvent = (
-  data: z.infer<typeof CallEventSchema>,
-): data is CallEndedEvent => {
-  return true;
-};
-
-const handleEvents = async (data: z.infer<typeof CallEventSchema>) => {
-  console.log("handling events", data);
-
-  if (isCallStartedEvent(data)) {
-    console.log("handling started", data);
-
-    const result = await pgClient.query("SELECT NOW()");
-    console.log("res", result.rows);
-
-    // callStartedHanlder()
-  } else if (isCallEndedEvent(data)) {
-    console.log("handling ended", data);
-    // callEndedHanlder()
-  } else {
-    logger.error("Unknown event type");
-  }
-};
-
-// const callStartedHanlder = () => {
-//   // create a flying promise instead of a background job system
-//   return "";
-// };
-// const callEndedHanlder = () => {
-//   // create a flying promise instead of a background job system
-//   return "";
-// };
+import { prisma } from "./libs/prisma";
+import { addHours } from "date-fns";
+import { CallEvent, CallEventSchema } from "./eventHandler.types";
+import { handleEvents } from "./eventHandler";
 
 const requestHandler = async (
   req: http.IncomingMessage,
   res: http.ServerResponse<http.IncomingMessage>,
 ) => {
-  // Routing
+  // Check authorization
+  const authorization = req.headers["authorization"];
+  const machineToken = authorization?.replace("Bearer ", "");
+  if (machineToken !== "CommunityPhone") {
+    res.writeHead(401, { "Content-Type": "text/plain" });
+    res.end("Unauthorized");
+    console.warn("Unauthorized");
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/events") {
-    // 1. parse data or throw bad request
+    // Check input
     let data: CallEvent;
     try {
       const unverifiedData = await parse.json(req);
       data = CallEventSchema.parse(unverifiedData);
     } catch (err) {
-      logger.error(err);
+      console.error(err);
       res.writeHead(400, { "Content-Type": "text/plain" });
       res.end("Bad Request");
       return;
     }
 
-    // 2. answer (low latency)
+    // Respond to client
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end();
 
-    // 3. handle the event
-    void handleEvents(data).catch(logger.error);
-  } else if (req.method === "POST" && req.url === "/calls") {
-    // TODO: implement list of failed calls
+    // Handle the event - save to db etc
+    void handleEvents(data).catch(console.error);
+  } else if (req.method === "GET" && req.url === "/metrics/failures") {
+    const twoHoursAgo = addHours(new Date(), -2);
+    const oneHourAgo = addHours(new Date(), -1);
+
+    const count = await prisma.callEvent.count({
+      where: {
+        type: "CALL_STARTED",
+        started_at: {
+          gte: twoHoursAgo,
+          lte: oneHourAgo, // to exclude calls that still may be running
+        },
+        Call: {
+          duration: null,
+        },
+      },
+    });
+
     res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end();
+    res.end(JSON.stringify({ count }));
   } else {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not found");
@@ -110,19 +73,17 @@ const errorMiddleware =
       try {
         return handler(req, res);
       } catch (err) {
-        logger.error(`Unhandled rejection: ${err}`);
+        console.error(`Unhandled rejection: ${err}`);
       }
     };
 
 const server = http.createServer(errorMiddleware(requestHandler));
 
 const setupServer = async () => {
-  await pgClient.connect();
-
   const port = 3000;
   server.listen(port, () => {
     console.log(`Server listening on port ${port}`);
   });
 };
 
-setupServer().catch(logger.error);
+setupServer().catch(console.error);

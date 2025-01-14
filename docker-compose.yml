@@ -1,14 +1,15 @@
 version: "3.8"
 
 services:
-  # web:
-  #   build: .
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - NODE_ENV=production
-  #   networks:
-  #     - main
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    networks:
+      - main
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://user:444555666@postgres:5432/database?schema=public
   postgres:
     image: postgres:16.4-alpine
     container_name: postgres

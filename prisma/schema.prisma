@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Call {
+  id        String      @id @db.Uuid
+  duration  Int?
+  CallEvent CallEvent[]
+}
+
+model CallEvent {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  callId     String        @db.Uuid
+  type       CallEventType
+  from       String        @db.VarChar(255)
+  to         String        @db.VarChar(255)
+  started_at DateTime?     @db.Timestamp(6)
+  ended_at   DateTime?     @db.Timestamp(6)
+  Call       Call          @relation(fields: [callId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+enum CallEventType {
+  CALL_STARTED
+  CALL_ENDED
+}

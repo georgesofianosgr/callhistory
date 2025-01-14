@@ -8,7 +8,16 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Install production dependencies.
-RUN npm install --only=production
+RUN npm install 
+
+# Copy the rest of the code
+COPY . .
+
+# Generate prisma on build image
+RUN npm run prisma:types
+
+# Transpile the source code
+RUN npm run build
 
 # Copy local code to the container image.
 COPY . .
@@ -26,4 +35,4 @@ COPY --from=builder /usr/src/app .
 EXPOSE 3000
 
 # Run the web service on container startup.
-CMD [ "node", "index.js" ]
+CMD [ "sh","-c", "npm run prisma:deploy && node dist/index.js"]
